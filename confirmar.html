@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>Confirmar asistencia</title>
+
+    <style>
+        :root {
+            --rosa-fondo: #f9edf1;
+            --rosa-principal: #c8849c;
+            --rosa-oscuro: #965f73;
+            --texto: #5f4b52;
+            --blanco: #ffffff;
+            --error: #a33f4b;
+            --sombra: 0 14px 35px rgba(109, 65, 82, 0.18);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            padding: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background:
+                radial-gradient(
+                    circle at top,
+                    #fff9fb 0%,
+                    var(--rosa-fondo) 65%
+                );
+            color: var(--texto);
+            font-family: Arial, Helvetica, sans-serif;
+        }
+
+        .tarjeta {
+            width: min(100%, 470px);
+            padding: 38px 26px;
+            border-radius: 28px;
+            background: rgba(255, 255, 255, 0.94);
+            text-align: center;
+            box-shadow: var(--sombra);
+        }
+
+        .decoracion {
+            margin-bottom: 12px;
+            font-size: 2.3rem;
+        }
+
+        h1 {
+            margin: 0 0 14px;
+            color: var(--rosa-oscuro);
+            font-size: 2rem;
+        }
+
+        .nombre {
+            margin: 0 0 10px;
+            color: var(--rosa-principal);
+            font-size: 1.35rem;
+            font-weight: bold;
+        }
+
+        .texto {
+            margin: 8px auto;
+            line-height: 1.6;
+        }
+
+        .limite {
+            margin: 22px 0;
+            padding: 18px;
+            border-radius: 18px;
+            background: var(--rosa-fondo);
+        }
+
+        .limite strong {
+            display: block;
+            margin: 6px 0;
+            color: var(--rosa-oscuro);
+            font-size: 2.6rem;
+        }
+
+        .opciones {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 12px;
+            margin: 28px 0;
+        }
+
+        .opcion {
+            position: relative;
+        }
+
+        .opcion input {
+            position: absolute;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .opcion label {
+            width: 58px;
+            height: 58px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid var(--rosa-principal);
+            border-radius: 50%;
+            background: var(--blanco);
+            color: var(--rosa-oscuro);
+            font-size: 1.1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.2s ease;
+        }
+
+        .opcion input:checked + label {
+            background: var(--rosa-principal);
+            color: var(--blanco);
+            transform: scale(1.08);
+        }
+
+        button {
+            width: 100%;
+            min-height: 52px;
+            border: none;
+            border-radius: 999px;
+            background: var(--rosa-principal);
+            color: var(--blanco);
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: var(--sombra);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .mensaje {
+            min-height: 28px;
+            margin: 22px 0 0;
+            line-height: 1.5;
+            font-weight: bold;
+        }
+
+        .mensaje.error {
+            color: var(--error);
+        }
+
+        .oculto {
+            display: none;
+        }
+
+        .cargador {
+            width: 46px;
+            height: 46px;
+            margin: 20px auto;
+            border: 5px solid rgba(200, 132, 156, 0.25);
+            border-top-color: var(--rosa-principal);
+            border-radius: 50%;
+            animation: girar 0.9s linear infinite;
+        }
+
+        @keyframes girar {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <main class="tarjeta">
+
+        <div class="decoracion">🌸</div>
+
+        <section id="cargando">
+            <h1>Confirmando asistencia</h1>
+
+            <p class="texto">
+                Estamos consultando los datos de tu invitación.
+            </p>
+
+            <div class="cargador"></div>
+        </section>
+
+        <section id="contenido" class="oculto">
+            <h1>Confirmación de asistencia</h1>
+
+            <p id="nombreInvitado" class="nombre"></p>
+
+            <p class="texto">
+                Nos encantará contar con tu presencia.
+            </p>
+
+            <div class="limite">
+                <span>Te hemos reservado</span>
+
+                <strong id="numeroLugares">0</strong>
+
+                <span id="textoLugares">lugares</span>
+            </div>
+
+            <p class="texto">
+                Selecciona cuántas personas asistirán:
+            </p>
+
+            <div id="opciones" class="opciones"></div>
+
+            <button
+                id="botonConfirmar"
+                type="button"
+                disabled
+            >
+                Confirmar asistencia
+            </button>
+
+            <p id="mensaje" class="mensaje"></p>
+        </section>
+
+        <section id="error" class="oculto">
+            <h1>No fue posible confirmar</h1>
+
+            <p id="mensajeError" class="mensaje error"></p>
+        </section>
+
+    </main>
+
+    <script>
+        "use strict";
+
+        const URL_APPS_SCRIPT =
+            "PEGA_AQUI_TU_URL_DE_APPS_SCRIPT";
+
+        const cargando = document.getElementById("cargando");
+        const contenido = document.getElementById("contenido");
+        const seccionError = document.getElementById("error");
+
+        const nombreInvitado =
+            document.getElementById("nombreInvitado");
+
+        const numeroLugares =
+            document.getElementById("numeroLugares");
+
+        const textoLugares =
+            document.getElementById("textoLugares");
+
+        const opciones =
+            document.getElementById("opciones");
+
+        const botonConfirmar =
+            document.getElementById("botonConfirmar");
+
+        const mensaje =
+            document.getElementById("mensaje");
+
+        const mensajeError =
+            document.getElementById("mensajeError");
+
+        let idInvitado = "";
+        let limite = 0;
+        let asistentesSeleccionados = 0;
+
+        document.addEventListener(
+            "DOMContentLoaded",
+            iniciar
+        );
+
+        async function iniciar() {
+            try {
+                validarUrlApi();
+
+                idInvitado = localStorage.getItem("INVITADO");
+
+                if (!idInvitado) {
+                    mostrarError(
+                        "No encontramos el identificador de esta invitación. Abre nuevamente el enlace que recibiste por WhatsApp."
+                    );
+
+                    return;
+                }
+
+                const datos = await consultarInvitado(idInvitado);
+
+                if (datos.estado !== "ok") {
+                    mostrarError(
+                        "El código de invitación no fue encontrado."
+                    );
+
+                    return;
+                }
+
+                if (
+                    String(datos.confirmado || "")
+                        .trim()
+                        .toUpperCase() === "SI"
+                ) {
+                    mostrarYaConfirmado(datos.nombre);
+                    return;
+                }
+
+                cargarDatos(datos);
+            } catch (error) {
+                console.error(error);
+
+                mostrarError(
+                    "Ocurrió un problema al consultar la invitación. Revisa tu conexión e intenta nuevamente."
+                );
+            }
+        }
+
+        async function consultarInvitado(id) {
+            const url =
+                `${URL_APPS_SCRIPT}?id=${encodeURIComponent(id)}`;
+
+            const respuesta = await fetch(url);
+
+            if (!respuesta.ok) {
+                throw new Error(
+                    `Error HTTP: ${respuesta.status}`
+                );
+            }
+
+            return await respuesta.json();
+        }
+
+        function cargarDatos(datos) {
+            limite = Number(datos.limite);
+
+            if (!Number.isInteger(limite) || limite < 1) {
+                mostrarError(
+                    "El límite de personas de esta invitación no es válido."
+                );
+
+                return;
+            }
+
+            nombreInvitado.textContent =
+                datos.nombre || "Invitado";
+
+            numeroLugares.textContent = limite;
+
+            textoLugares.textContent =
+                limite === 1 ? "lugar" : "lugares";
+
+            crearOpciones(limite);
+
+            cargando.classList.add("oculto");
+            contenido.classList.remove("oculto");
+        }
+
+        function crearOpciones(cantidad) {
+            opciones.innerHTML = "";
+
+            for (
+                let numero = 1;
+                numero <= cantidad;
+                numero++
+            ) {
+                const contenedor =
+                    document.createElement("div");
+
+                contenedor.className = "opcion";
+
+                const input =
+                    document.createElement("input");
+
+                input.type = "radio";
+                input.name = "asistentes";
+                input.id = `asistentes-${numero}`;
+                input.value = numero;
+
+                const label =
+                    document.createElement("label");
+
+                label.htmlFor = input.id;
+                label.textContent = numero;
+
+                input.addEventListener("change", () => {
+                    asistentesSeleccionados = numero;
+                    botonConfirmar.disabled = false;
+                    mensaje.textContent = "";
+                });
+
+                contenedor.append(input, label);
+                opciones.appendChild(contenedor);
+            }
+        }
+
+        botonConfirmar.addEventListener(
+            "click",
+            confirmarAsistencia
+        );
+
+        async function confirmarAsistencia() {
+            if (
+                asistentesSeleccionados < 1 ||
+                asistentesSeleccionados > limite
+            ) {
+                mensaje.textContent =
+                    "Selecciona una cantidad válida.";
+
+                mensaje.classList.add("error");
+                return;
+            }
+
+            botonConfirmar.disabled = true;
+            botonConfirmar.textContent = "Confirmando...";
+
+            mensaje.textContent = "";
+            mensaje.classList.remove("error");
+
+            try {
+                const respuesta = await fetch(
+                    URL_APPS_SCRIPT,
+                    {
+                        method: "POST",
+
+                        headers: {
+                            "Content-Type":
+                                "text/plain;charset=utf-8"
+                        },
+
+                        body: JSON.stringify({
+                            id: idInvitado,
+                            asistentes:
+                                asistentesSeleccionados
+                        })
+                    }
+                );
+
+                if (!respuesta.ok) {
+                    throw new Error(
+                        `Error HTTP: ${respuesta.status}`
+                    );
+                }
+
+                const resultado = await respuesta.json();
+
+                procesarResultado(resultado);
+            } catch (error) {
+                console.error(error);
+
+                mensaje.textContent =
+                    "No fue posible guardar la confirmación. Intenta nuevamente.";
+
+                mensaje.classList.add("error");
+
+                botonConfirmar.disabled = false;
+                botonConfirmar.textContent =
+                    "Confirmar asistencia";
+            }
+        }
+
+        function procesarResultado(resultado) {
+            switch (resultado.estado) {
+                case "ok":
+                    opciones.innerHTML = "";
+
+                    botonConfirmar.classList.add("oculto");
+
+                    mensaje.textContent =
+                        `¡Gracias! Registramos la asistencia de ${asistentesSeleccionados} ${
+                            asistentesSeleccionados === 1
+                                ? "persona"
+                                : "personas"
+                        }.`;
+
+                    break;
+
+                case "ya_confirmado":
+                    mostrarYaConfirmado();
+                    break;
+
+                case "limite_superado":
+                    mensaje.textContent =
+                        `Solo puedes confirmar hasta ${resultado.limite} personas.`;
+
+                    mensaje.classList.add("error");
+
+                    botonConfirmar.disabled = false;
+                    botonConfirmar.textContent =
+                        "Confirmar asistencia";
+
+                    break;
+
+                case "no_encontrado":
+                    mostrarError(
+                        "El código de invitación no fue encontrado."
+                    );
+
+                    break;
+
+                default:
+                    throw new Error(
+                        "Respuesta desconocida del servidor."
+                    );
+            }
+        }
+
+        function mostrarYaConfirmado(nombre = "") {
+            cargando.classList.add("oculto");
+            contenido.classList.remove("oculto");
+
+            nombreInvitado.textContent =
+                nombre || "Invitado";
+
+            document.querySelector(".limite")
+                .classList.add("oculto");
+
+            opciones.innerHTML = "";
+
+            botonConfirmar.classList.add("oculto");
+
+            mensaje.textContent =
+                "Tu asistencia ya había sido confirmada. ¡Gracias!";
+        }
+
+        function mostrarError(texto) {
+            cargando.classList.add("oculto");
+            contenido.classList.add("oculto");
+
+            mensajeError.textContent = texto;
+            seccionError.classList.remove("oculto");
+        }
+
+        function validarUrlApi() {
+            if (
+                !URL_APPS_SCRIPT ||
+                URL_APPS_SCRIPT.includes("PEGA_AQUI")
+            ) {
+                throw new Error(
+                    "Falta configurar la URL del Apps Script."
+                );
+            }
+        }
+    </script>
+
+</body>
+</html>
