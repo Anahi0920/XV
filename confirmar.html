@@ -128,6 +128,25 @@
             transform: scale(1.08);
         }
 
+        .campo-telefono {
+            width: 100%;
+            min-height: 52px;
+            margin: 22px 0 14px;
+            padding: 0 18px;
+            border: 1px solid var(--rosa-principal);
+            border-radius: 999px;
+            outline: none;
+            background: var(--blanco);
+            color: var(--texto);
+            font-size: 1rem;
+            text-align: center;
+        }
+
+        .campo-telefono:focus {
+            border-width: 2px;
+            box-shadow: 0 0 0 4px rgba(200, 132, 156, 0.15);
+        }
+
         button {
             width: 100%;
             min-height: 52px;
@@ -204,7 +223,7 @@
                 Nos encantará contar con tu presencia.
             </p>
 
-            <div class="limite">
+            <div id="bloqueLimite" class="limite">
                 <span>Te hemos reservado</span>
 
                 <strong id="numeroLugares">0</strong>
@@ -212,7 +231,7 @@
                 <span id="textoLugares">lugares</span>
             </div>
 
-            <p class="texto">
+            <p id="instruccionAsistentes" class="texto">
                 Selecciona cuántas personas asistirán:
             </p>
 
@@ -229,6 +248,35 @@
             <p id="mensaje" class="mensaje"></p>
         </section>
 
+        <!-- Nueva sección para recuperar la invitación con el teléfono -->
+        <section id="recuperarTelefono" class="oculto">
+            <h1>Recuperar invitación</h1>
+
+            <p class="texto">
+                No pudimos recuperar automáticamente tu invitación.
+                Escribe el número de teléfono al que recibiste el enlace.
+            </p>
+
+            <input
+                id="telefonoRecuperacion"
+                class="campo-telefono"
+                type="tel"
+                inputmode="numeric"
+                autocomplete="tel"
+                maxlength="14"
+                placeholder="Número de teléfono de 10 dígitos"
+            >
+
+            <button
+                id="btnBuscarTelefono"
+                type="button"
+            >
+                Buscar invitación
+            </button>
+
+            <p id="mensajeRecuperacion" class="mensaje"></p>
+        </section>
+
         <section id="error" class="oculto">
             <h1>No fue posible confirmar</h1>
 
@@ -242,12 +290,21 @@
 
         const URL_APPS_SCRIPT =
             "https://script.google.com/macros/s/AKfycbwXdjWYMlq8m23Ws7pWCcfp6FkvjmaoHZzijCPyj5qIgo-QLQ72TzaRCywWCVMQCww7uA/exec";
+
         const URL_INVITACION_CANVA =
             "https://cumplexvcamila.my.canva.site/";
 
-        const cargando = document.getElementById("cargando");
-        const contenido = document.getElementById("contenido");
-        const seccionError = document.getElementById("error");
+        const cargando =
+            document.getElementById("cargando");
+
+        const contenido =
+            document.getElementById("contenido");
+
+        const recuperarTelefono =
+            document.getElementById("recuperarTelefono");
+
+        const seccionError =
+            document.getElementById("error");
 
         const nombreInvitado =
             document.getElementById("nombreInvitado");
@@ -258,6 +315,12 @@
         const textoLugares =
             document.getElementById("textoLugares");
 
+        const bloqueLimite =
+            document.getElementById("bloqueLimite");
+
+        const instruccionAsistentes =
+            document.getElementById("instruccionAsistentes");
+
         const opciones =
             document.getElementById("opciones");
 
@@ -266,6 +329,15 @@
 
         const mensaje =
             document.getElementById("mensaje");
+
+        const telefonoRecuperacion =
+            document.getElementById("telefonoRecuperacion");
+
+        const btnBuscarTelefono =
+            document.getElementById("btnBuscarTelefono");
+
+        const mensajeRecuperacion =
+            document.getElementById("mensajeRecuperacion");
 
         const mensajeError =
             document.getElementById("mensajeError");
@@ -279,40 +351,47 @@
             iniciar
         );
 
+        botonConfirmar.addEventListener(
+            "click",
+            confirmarAsistencia
+        );
+
+        btnBuscarTelefono.addEventListener(
+            "click",
+            buscarInvitacionPorTelefono
+        );
+
+        telefonoRecuperacion.addEventListener(
+            "keydown",
+            function (evento) {
+                if (evento.key === "Enter") {
+                    evento.preventDefault();
+                    buscarInvitacionPorTelefono();
+                }
+            }
+        );
+
         async function iniciar() {
             try {
                 validarUrlApi();
 
-                idInvitado = localStorage.getItem("INVITADO");
+                /*
+                 * Busca el ID primero en la URL y después en:
+                 * localStorage, sessionStorage y cookie.
+                 */
+                idInvitado = obtenerIdentificador();
 
+                /*
+                 * Si Safari o WhatsApp perdió el ID,
+                 * se muestra el formulario de teléfono.
+                 */
                 if (!idInvitado) {
-                    mostrarError(
-                        "No encontramos el identificador de esta invitación. Abre nuevamente el enlace que recibiste por WhatsApp."
-                    );
-
+                    mostrarRecuperacionPorTelefono();
                     return;
                 }
 
-                const datos = await consultarInvitado(idInvitado);
+                await cargarInvitadoPorId(idInvitado);
 
-                if (datos.estado !== "ok") {
-                    mostrarError(
-                        "El código de invitación no fue encontrado."
-                    );
-
-                    return;
-                }
-
-                if (
-                    String(datos.confirmado || "")
-                        .trim()
-                        .toUpperCase() === "SI"
-                ) {
-                    mostrarYaConfirmado(datos.nombre);
-                    return;
-                }
-
-                cargarDatos(datos);
             } catch (error) {
                 console.error(error);
 
@@ -322,11 +401,47 @@
             }
         }
 
+        async function cargarInvitadoPorId(id) {
+            mostrarCargando();
+
+            const datos =
+                await consultarInvitado(id);
+
+            if (datos.estado !== "ok") {
+                mostrarRecuperacionPorTelefono(
+                    "No pudimos localizar la invitación automáticamente. Escribe el teléfono al que recibiste el enlace."
+                );
+
+                return;
+            }
+
+            idInvitado = id;
+
+            guardarIdentificador(idInvitado);
+
+            if (
+                String(datos.confirmado || "")
+                    .trim()
+                    .toUpperCase() === "SI"
+            ) {
+                mostrarYaConfirmado(datos.nombre);
+                return;
+            }
+
+            cargarDatos(datos);
+        }
+
         async function consultarInvitado(id) {
             const url =
-                `${URL_APPS_SCRIPT}?id=${encodeURIComponent(id)}`;
+                `${URL_APPS_SCRIPT}?id=${encodeURIComponent(id)}&_=${Date.now()}`;
 
-            const respuesta = await fetch(url);
+            const respuesta = await fetch(
+                url,
+                {
+                    method: "GET",
+                    cache: "no-store"
+                }
+            );
 
             if (!respuesta.ok) {
                 throw new Error(
@@ -337,10 +452,281 @@
             return await respuesta.json();
         }
 
-        function cargarDatos(datos) {
-            limite = Number(datos.limite);
+        /*
+         * Obtiene el ID mediante cuatro métodos:
+         * URL, localStorage, sessionStorage y cookie.
+         */
+        function obtenerIdentificador() {
+            const parametros =
+                new URLSearchParams(
+                    window.location.search
+                );
 
-            if (!Number.isInteger(limite) || limite < 1) {
+            const idUrl =
+                String(
+                    parametros.get("id") || ""
+                ).trim();
+
+            if (idUrl) {
+                guardarIdentificador(idUrl);
+                return idUrl;
+            }
+
+            try {
+                const idLocal =
+                    String(
+                        localStorage.getItem(
+                            "INVITADO"
+                        ) || ""
+                    ).trim();
+
+                if (idLocal) {
+                    return idLocal;
+                }
+
+            } catch (error) {
+                console.warn(
+                    "No se pudo leer localStorage:",
+                    error
+                );
+            }
+
+            try {
+                const idSesion =
+                    String(
+                        sessionStorage.getItem(
+                            "INVITADO"
+                        ) || ""
+                    ).trim();
+
+                if (idSesion) {
+                    return idSesion;
+                }
+
+            } catch (error) {
+                console.warn(
+                    "No se pudo leer sessionStorage:",
+                    error
+                );
+            }
+
+            try {
+                const coincidencia =
+                    document.cookie.match(
+                        /(?:^|;\s*)INVITADO=([^;]+)/
+                    );
+
+                if (coincidencia) {
+                    return decodeURIComponent(
+                        coincidencia[1]
+                    ).trim();
+                }
+
+            } catch (error) {
+                console.warn(
+                    "No se pudo leer la cookie:",
+                    error
+                );
+            }
+
+            return "";
+        }
+
+        /*
+         * Guarda el identificador en tres lugares
+         * para mejorar la compatibilidad con iPhone.
+         */
+        function guardarIdentificador(id) {
+            const identificador =
+                String(id || "").trim();
+
+            if (!identificador) {
+                return;
+            }
+
+            try {
+                localStorage.setItem(
+                    "INVITADO",
+                    identificador
+                );
+
+            } catch (error) {
+                console.warn(
+                    "No se pudo usar localStorage:",
+                    error
+                );
+            }
+
+            try {
+                sessionStorage.setItem(
+                    "INVITADO",
+                    identificador
+                );
+
+            } catch (error) {
+                console.warn(
+                    "No se pudo usar sessionStorage:",
+                    error
+                );
+            }
+
+            try {
+                document.cookie =
+                    "INVITADO=" +
+                    encodeURIComponent(
+                        identificador
+                    ) +
+                    "; path=/; max-age=2592000; SameSite=Lax; Secure";
+
+            } catch (error) {
+                console.warn(
+                    "No se pudo guardar la cookie:",
+                    error
+                );
+            }
+        }
+
+        /*
+         * Busca la invitación usando el teléfono.
+         */
+        async function buscarInvitacionPorTelefono() {
+            const telefono =
+                normalizarTelefono(
+                    telefonoRecuperacion.value
+                );
+
+            limpiarMensajeRecuperacion();
+
+            if (telefono.length !== 10) {
+                mostrarMensajeRecuperacion(
+                    "Escribe un número de teléfono de 10 dígitos.",
+                    true
+                );
+
+                return;
+            }
+
+            btnBuscarTelefono.disabled = true;
+
+            btnBuscarTelefono.textContent =
+                "Buscando invitación...";
+
+            mostrarMensajeRecuperacion(
+                "Estamos buscando tu invitación.",
+                false
+            );
+
+            try {
+                const url =
+                    `${URL_APPS_SCRIPT}?telefono=${encodeURIComponent(telefono)}&_=${Date.now()}`;
+
+                const respuesta = await fetch(
+                    url,
+                    {
+                        method: "GET",
+                        cache: "no-store"
+                    }
+                );
+
+                if (!respuesta.ok) {
+                    throw new Error(
+                        `Error HTTP: ${respuesta.status}`
+                    );
+                }
+
+                const resultado =
+                    await respuesta.json();
+
+                /*
+                 * Funciona si Apps Script responde:
+                 *
+                 * {
+                 *   estado: "ok",
+                 *   invitado: {
+                 *     id: "A001"
+                 *   }
+                 * }
+                 */
+                const datosInvitado =
+                    resultado.invitado ||
+                    resultado;
+
+                if (
+                    resultado.estado === "ok" &&
+                    datosInvitado &&
+                    datosInvitado.id
+                ) {
+                    idInvitado =
+                        String(
+                            datosInvitado.id
+                        ).trim();
+
+                    guardarIdentificador(
+                        idInvitado
+                    );
+
+                    mostrarMensajeRecuperacion(
+                        "Invitación encontrada. Cargando...",
+                        false
+                    );
+
+                    await cargarInvitadoPorId(
+                        idInvitado
+                    );
+
+                    return;
+                }
+
+                mostrarMensajeRecuperacion(
+                    resultado.mensaje ||
+                    "No encontramos una invitación asociada con ese teléfono.",
+                    true
+                );
+
+            } catch (error) {
+                console.error(error);
+
+                mostrarMensajeRecuperacion(
+                    "No fue posible buscar la invitación. Revisa tu conexión e inténtalo nuevamente.",
+                    true
+                );
+
+            } finally {
+                btnBuscarTelefono.disabled =
+                    false;
+
+                btnBuscarTelefono.textContent =
+                    "Buscar invitación";
+            }
+        }
+
+        /*
+         * Elimina 52, espacios, guiones y paréntesis.
+         * Conserva los últimos 10 dígitos.
+         */
+        function normalizarTelefono(valor) {
+            let telefono =
+                String(valor || "")
+                    .replace(/\D/g, "");
+
+            if (telefono.length > 10) {
+                telefono =
+                    telefono.slice(-10);
+            }
+
+            return telefono;
+        }
+
+        function cargarDatos(datos) {
+            limite =
+                Number(datos.limite);
+
+            asistentesSeleccionados = 0;
+
+            if (
+                !Number.isInteger(limite) ||
+                limite < 1
+            ) {
                 mostrarError(
                     "El límite de personas de esta invitación no es válido."
                 );
@@ -351,15 +737,44 @@
             nombreInvitado.textContent =
                 datos.nombre || "Invitado";
 
-            numeroLugares.textContent = limite;
+            numeroLugares.textContent =
+                limite;
 
             textoLugares.textContent =
-                limite === 1 ? "lugar" : "lugares";
+                limite === 1
+                    ? "lugar"
+                    : "lugares";
+
+            bloqueLimite.classList.remove(
+                "oculto"
+            );
+
+            instruccionAsistentes.classList.remove(
+                "oculto"
+            );
+
+            botonConfirmar.classList.remove(
+                "oculto"
+            );
+
+            botonConfirmar.disabled = true;
+
+            botonConfirmar.textContent =
+                "Confirmar asistencia";
+
+            mensaje.textContent = "";
+
+            mensaje.classList.remove(
+                "error"
+            );
 
             crearOpciones(limite);
 
-            cargando.classList.add("oculto");
-            contenido.classList.remove("oculto");
+            ocultarTodasLasSecciones();
+
+            contenido.classList.remove(
+                "oculto"
+            );
         }
 
         function crearOpciones(cantidad) {
@@ -371,39 +786,64 @@
                 numero++
             ) {
                 const contenedor =
-                    document.createElement("div");
+                    document.createElement(
+                        "div"
+                    );
 
-                contenedor.className = "opcion";
+                contenedor.className =
+                    "opcion";
 
                 const input =
-                    document.createElement("input");
+                    document.createElement(
+                        "input"
+                    );
 
                 input.type = "radio";
                 input.name = "asistentes";
-                input.id = `asistentes-${numero}`;
+
+                input.id =
+                    `asistentes-${numero}`;
+
                 input.value = numero;
 
                 const label =
-                    document.createElement("label");
+                    document.createElement(
+                        "label"
+                    );
 
-                label.htmlFor = input.id;
-                label.textContent = numero;
+                label.htmlFor =
+                    input.id;
 
-                input.addEventListener("change", () => {
-                    asistentesSeleccionados = numero;
-                    botonConfirmar.disabled = false;
-                    mensaje.textContent = "";
-                });
+                label.textContent =
+                    numero;
 
-                contenedor.append(input, label);
-                opciones.appendChild(contenedor);
+                input.addEventListener(
+                    "change",
+                    function () {
+                        asistentesSeleccionados =
+                            numero;
+
+                        botonConfirmar.disabled =
+                            false;
+
+                        mensaje.textContent = "";
+
+                        mensaje.classList.remove(
+                            "error"
+                        );
+                    }
+                );
+
+                contenedor.append(
+                    input,
+                    label
+                );
+
+                opciones.appendChild(
+                    contenedor
+                );
             }
         }
-
-        botonConfirmar.addEventListener(
-            "click",
-            confirmarAsistencia
-        );
 
         async function confirmarAsistencia() {
             if (
@@ -413,15 +853,23 @@
                 mensaje.textContent =
                     "Selecciona una cantidad válida.";
 
-                mensaje.classList.add("error");
+                mensaje.classList.add(
+                    "error"
+                );
+
                 return;
             }
 
             botonConfirmar.disabled = true;
-            botonConfirmar.textContent = "Confirmando...";
+
+            botonConfirmar.textContent =
+                "Confirmando...";
 
             mensaje.textContent = "";
-            mensaje.classList.remove("error");
+
+            mensaje.classList.remove(
+                "error"
+            );
 
             try {
                 const respuesta = await fetch(
@@ -436,6 +884,7 @@
 
                         body: JSON.stringify({
                             id: idInvitado,
+
                             asistentes:
                                 asistentesSeleccionados
                         })
@@ -448,18 +897,26 @@
                     );
                 }
 
-                const resultado = await respuesta.json();
+                const resultado =
+                    await respuesta.json();
 
-                procesarResultado(resultado);
+                procesarResultado(
+                    resultado
+                );
+
             } catch (error) {
                 console.error(error);
 
                 mensaje.textContent =
                     "No fue posible guardar la confirmación. Intenta nuevamente.";
 
-                mensaje.classList.add("error");
+                mensaje.classList.add(
+                    "error"
+                );
 
-                botonConfirmar.disabled = false;
+                botonConfirmar.disabled =
+                    false;
+
                 botonConfirmar.textContent =
                     "Confirmar asistencia";
             }
@@ -467,22 +924,42 @@
 
         function procesarResultado(resultado) {
             switch (resultado.estado) {
+
                 case "ok":
                     opciones.innerHTML = "";
-                
-                    botonConfirmar.classList.add("oculto");
-                
+
+                    bloqueLimite.classList.add(
+                        "oculto"
+                    );
+
+                    instruccionAsistentes.classList.add(
+                        "oculto"
+                    );
+
+                    botonConfirmar.classList.add(
+                        "oculto"
+                    );
+
+                    mensaje.classList.remove(
+                        "error"
+                    );
+
                     mensaje.textContent =
                         `¡Gracias! Registramos la asistencia de ${asistentesSeleccionados} ${
                             asistentesSeleccionados === 1
                                 ? "persona"
                                 : "personas"
                         }. Regresando a la invitación...`;
-                
-                    setTimeout(() => {
-                        window.location.replace(URL_INVITACION_CANVA);
-                    }, 2500);
-                
+
+                    setTimeout(
+                        function () {
+                            window.location.replace(
+                                URL_INVITACION_CANVA
+                            );
+                        },
+                        2500
+                    );
+
                     break;
 
                 case "ya_confirmado":
@@ -493,17 +970,21 @@
                     mensaje.textContent =
                         `Solo puedes confirmar hasta ${resultado.limite} personas.`;
 
-                    mensaje.classList.add("error");
+                    mensaje.classList.add(
+                        "error"
+                    );
 
-                    botonConfirmar.disabled = false;
+                    botonConfirmar.disabled =
+                        false;
+
                     botonConfirmar.textContent =
                         "Confirmar asistencia";
 
                     break;
 
                 case "no_encontrado":
-                    mostrarError(
-                        "El código de invitación no fue encontrado."
+                    mostrarRecuperacionPorTelefono(
+                        "No pudimos localizar la invitación. Escribe el teléfono al que recibiste el enlace."
                     );
 
                     break;
@@ -515,40 +996,142 @@
             }
         }
 
-        function mostrarYaConfirmado(nombre = "") {
-            cargando.classList.add("oculto");
-            contenido.classList.remove("oculto");
-        
+        function mostrarYaConfirmado(
+            nombre = ""
+        ) {
+            ocultarTodasLasSecciones();
+
+            contenido.classList.remove(
+                "oculto"
+            );
+
             nombreInvitado.textContent =
                 nombre || "Invitado";
-        
-            document.querySelector(".limite")
-                .classList.add("oculto");
-        
+
+            bloqueLimite.classList.add(
+                "oculto"
+            );
+
+            instruccionAsistentes.classList.add(
+                "oculto"
+            );
+
             opciones.innerHTML = "";
-        
-            botonConfirmar.classList.add("oculto");
-        
+
+            botonConfirmar.classList.add(
+                "oculto"
+            );
+
+            mensaje.classList.remove(
+                "error"
+            );
+
             mensaje.textContent =
                 "Tu asistencia ya había sido confirmada. Regresando a la invitación...";
-        
-            setTimeout(() => {
-                window.location.replace(URL_INVITACION_CANVA);
-            }, 2500);
+
+            setTimeout(
+                function () {
+                    window.location.replace(
+                        URL_INVITACION_CANVA
+                    );
+                },
+                2500
+            );
+        }
+
+        function mostrarRecuperacionPorTelefono(
+            texto = ""
+        ) {
+            ocultarTodasLasSecciones();
+
+            recuperarTelefono.classList.remove(
+                "oculto"
+            );
+
+            telefonoRecuperacion.value = "";
+
+            limpiarMensajeRecuperacion();
+
+            if (texto) {
+                mostrarMensajeRecuperacion(
+                    texto,
+                    false
+                );
+            }
+
+            setTimeout(
+                function () {
+                    telefonoRecuperacion.focus();
+                },
+                200
+            );
+        }
+
+        function mostrarCargando() {
+            ocultarTodasLasSecciones();
+
+            cargando.classList.remove(
+                "oculto"
+            );
         }
 
         function mostrarError(texto) {
-            cargando.classList.add("oculto");
-            contenido.classList.add("oculto");
+            ocultarTodasLasSecciones();
 
-            mensajeError.textContent = texto;
-            seccionError.classList.remove("oculto");
+            mensajeError.textContent =
+                texto;
+
+            seccionError.classList.remove(
+                "oculto"
+            );
+        }
+
+        function ocultarTodasLasSecciones() {
+            cargando.classList.add(
+                "oculto"
+            );
+
+            contenido.classList.add(
+                "oculto"
+            );
+
+            recuperarTelefono.classList.add(
+                "oculto"
+            );
+
+            seccionError.classList.add(
+                "oculto"
+            );
+        }
+
+        function mostrarMensajeRecuperacion(
+            texto,
+            esError
+        ) {
+            mensajeRecuperacion.textContent =
+                texto;
+
+            mensajeRecuperacion.classList.toggle(
+                "error",
+                Boolean(esError)
+            );
+        }
+
+        function limpiarMensajeRecuperacion() {
+            mensajeRecuperacion.textContent =
+                "";
+
+            mensajeRecuperacion.classList.remove(
+                "error"
+            );
         }
 
         function validarUrlApi() {
             if (
                 !URL_APPS_SCRIPT ||
-                URL_APPS_SCRIPT.includes("PEGA_AQUI")
+                URL_APPS_SCRIPT.includes(
+                    "https://script.google.com/macros/s/AKfycbwXdjWYMlq8m23Ws7pWCcfp6FkvjmaoHZzijCPyj5qIgo-QLQ72TzaRCywWCVMQCww7uA/exec"
+                )
             ) {
                 throw new Error(
                     "Falta configurar la URL del Apps Script."
